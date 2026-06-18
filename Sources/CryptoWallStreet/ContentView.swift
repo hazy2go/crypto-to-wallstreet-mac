@@ -74,6 +74,7 @@ struct ContentView: View {
     .frame(width: 326)
     .background(Color.nierBone)
     .foregroundStyle(Color.nierInk)
+    .environment(\.colorScheme, .light) // NieR theme is light; keep system controls dark-on-bone
   }
 
   // MARK: header
@@ -197,14 +198,31 @@ struct ContentView: View {
     }
   }
 
+  /// Custom Menu instead of native Picker: the native picker renders its
+  /// selected-value label in the system label colour (white under the dark
+  /// system appearance), which is unreadable on bone. A Menu label is fully
+  /// styleable, so we force ink.
   private func picker(selection: Binding<String>, options: [Asset]) -> some View {
-    Picker("", selection: selection) {
-      ForEach(options) { a in Text(a.ticker).tag(a.symbol) }
+    let current = options.first { $0.symbol == selection.wrappedValue }?.ticker
+      ?? selection.wrappedValue
+    return Menu {
+      ForEach(options) { a in
+        Button(a.ticker) { selection.wrappedValue = a.symbol }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(current).mono(13, .bold).foregroundStyle(Color.nierInk)
+        Spacer(minLength: 4)
+        Text("▾").mono(9).foregroundStyle(Color.nierFaint)
+      }
+      .padding(.horizontal, 10).padding(.vertical, 7)
+      .frame(maxWidth: .infinity)
+      .nierBox(.nierBone)
+      .contentShape(Rectangle())
     }
-    .labelsHidden()
-    .pickerStyle(.menu)
-    .frame(maxWidth: .infinity)
-    .tint(Color.nierInk)
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize(horizontal: false, vertical: true)
   }
 
   private func footBtn(_ t: String, _ action: @escaping () -> Void) -> some View {
