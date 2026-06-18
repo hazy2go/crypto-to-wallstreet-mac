@@ -1,6 +1,22 @@
 import SwiftUI
 import AppKit
 
+/// Hairline rectangular frame — the NieR menu-box look (no rounded corners).
+private struct NierBox: ViewModifier {
+  var fill: Color = .nierPanel
+  func body(content: Content) -> some View {
+    content
+      .background(fill)
+      .overlay(Rectangle().stroke(Color.nierLine, lineWidth: 1))
+  }
+}
+private extension View {
+  func nierBox(_ fill: Color = .nierPanel) -> some View { modifier(NierBox(fill: fill)) }
+  func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> some View {
+    font(.system(size: size, weight: weight, design: .monospaced))
+  }
+}
+
 struct ContentView: View {
   @ObservedObject var store: PriceStore
 
@@ -9,160 +25,193 @@ struct ContentView: View {
   @AppStorage("amount") private var amount = "1"
   @AppStorage("coinToStock") private var coinToStock = true
 
-  private var coin: Asset { COINS.first { $0.symbol == coinSym } ?? COINS[0] }
+  /// Every coin the oracle prices, majors first (with proper names), then the
+  /// long tail alphabetically. xStocks excluded. Falls back to the curated list
+  /// before the first price load.
+  private var coinOptions: [Asset] {
+    let priced = store.prices
+    if priced.isEmpty { return COINS }
+    let stockSyms = Set(STOCKS.map(\.symbol))
+    var out = COINS.filter { priced[$0.symbol] != nil }
+    let have = Set(out.map(\.symbol))
+    let tail = priced.keys
+      .filter { !stockSyms.contains($0) && !have.contains($0) }
+      .sorted()
+      .map { Asset(symbol: $0, ticker: $0, name: $0) }
+    out.append(contentsOf: tail)
+    return out
+  }
+
+  private var coin: Asset {
+    coinOptions.first { $0.symbol == coinSym } ?? COINS.first { $0.symbol == coinSym } ?? COINS[0]
+  }
   private var stock: Asset { STOCKS.first { $0.symbol == stockSym } ?? STOCKS[0] }
   private var coinPrice: Double? { store.price(coin.symbol) }
   private var stockPrice: Double? { store.price(stock.symbol) }
 
-  // How many of `to` you get for `amount` of `from`.
   private var converted: Double? {
     guard let cp = coinPrice, let sp = stockPrice, sp > 0, cp > 0 else { return nil }
     let a = amount.asAmount
     return coinToStock ? a * cp / sp : a * sp / cp
   }
-
   private var fromAsset: Asset { coinToStock ? coin : stock }
   private var toAsset: Asset { coinToStock ? stock : coin }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 0) {
       header
+      Rectangle().fill(Color.nierLine).frame(height: 1)
 
-      Divider().overlay(Color.white.opacity(0.08))
-
-      // ---- Converter ----
-      VStack(alignment: .leading, spacing: 8) {
-        HStack {
-          assetPicker(title: "Coin", selection: $coinSym, options: COINS)
-          Spacer(minLength: 8)
-          Button {
-            coinToStock.toggle()
-          } label: {
-            Image(systemName: "arrow.left.arrow.right")
-              .font(.system(size: 12, weight: .bold))
-          }
-          .buttonStyle(.borderless)
-          .help("Flip direction")
-          Spacer(minLength: 8)
-          assetPicker(title: "Stock", selection: $stockSym, options: STOCKS)
-        }
-
-        Text(coinToStock ? "You spend" : "You spend")
-          .font(.system(size: 10, weight: .semibold))
-          .foregroundStyle(.secondary)
-
-        HStack(spacing: 8) {
-          TextField("0", text: $amount)
-            .textFieldStyle(.roundedBorder)
-            .font(.system(.title3, design: .monospaced))
-            .frame(maxWidth: 130)
-            .onChange(of: amount) { newVal in
-              amount = newVal.filter { $0.isNumber || $0 == "." }
-            }
-          Text(fromAsset.ticker)
-            .font(.system(.title3, design: .monospaced).weight(.bold))
-          Spacer()
-        }
-
-        resultRow
+      VStack(alignment: .leading, spacing: 13) {
+        converter
+        Rectangle().fill(Color.nierLine).frame(height: 1)
+        glance
+        footer
+        poweredBy
       }
-
-      Divider().overlay(Color.white.opacity(0.08))
-
-      glance
-      footer
-
-      HStack(spacing: 4) {
-        Spacer()
-        Text("Powered by").font(.system(size: 9)).foregroundStyle(.tertiary)
-        Text("SODAX").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.sodaxOrange)
-        Spacer()
-      }
+      .padding(14)
     }
-    .padding(14)
-    .frame(width: 320)
-    .background(Color.sodaxBg)
-    .foregroundStyle(Color.sodaxInk)
+    .frame(width: 326)
+    .background(Color.nierBone)
+    .foregroundStyle(Color.nierInk)
   }
 
-  // MARK: - pieces
+  // MARK: header
 
   private var header: some View {
-    HStack(spacing: 6) {
+    HStack(spacing: 7) {
       Text("◢◤").foregroundStyle(Color.sodaxOrange)
-      Text("Crypto → Wall Street").font(.system(size: 13, weight: .bold))
+      Text("CRYPTO → WALL STREET").mono(11, .bold).tracking(1.5)
       Spacer()
-      if store.loading { ProgressView().scaleEffect(0.5).frame(width: 14, height: 14) }
-    }
-  }
-
-  private func assetPicker(title: String, selection: Binding<String>, options: [Asset]) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(title.uppercased())
-        .font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
-      Picker("", selection: selection) {
-        ForEach(options) { a in Text(a.ticker).tag(a.symbol) }
+      if store.loading {
+        ProgressView().scaleEffect(0.45).frame(width: 12, height: 12)
       }
-      .labelsHidden()
-      .frame(width: 110)
+    }
+    .padding(.horizontal, 14).padding(.vertical, 11)
+    .background(Color.nierPanel)
+  }
+
+  // MARK: converter
+
+  private var converter: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      label("CONVERT")
+
+      HStack(spacing: 8) {
+        picker(selection: $coinSym, options: coinOptions)
+        Button { coinToStock.toggle() } label: {
+          Text("⇄").mono(13, .bold).foregroundStyle(Color.sodaxOrange)
+            .frame(width: 28, height: 26).nierBox(.nierBone)
+        }
+        .buttonStyle(.plain).help("Flip direction")
+        picker(selection: $stockSym, options: STOCKS)
+      }
+
+      label(coinToStock ? "YOU SPEND \(coin.ticker)" : "YOU SPEND \(stock.ticker)")
+      HStack(spacing: 8) {
+        TextField("0", text: $amount)
+          .textFieldStyle(.plain)
+          .mono(22, .medium)
+          .padding(.horizontal, 9).padding(.vertical, 6)
+          .nierBox(.nierBone)
+          .onChange(of: amount) { v in amount = v.filter { $0.isNumber || $0 == "." } }
+        Text(fromAsset.ticker).mono(15, .bold)
+        Spacer()
+      }
+
+      result
     }
   }
 
-  private var resultRow: some View {
-    VStack(alignment: .leading, spacing: 3) {
-      Text("You receive")
-        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+  private var result: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      label("YOU RECEIVE")
       if let out = converted {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Text("≈ \(Fmt.qty(out))")
-            .font(.system(.title2, design: .monospaced).weight(.semibold))
-          Text(toAsset.ticker)
-            .font(.system(.body, design: .monospaced).weight(.bold))
-            .foregroundStyle(Color.sodaxOrange)
+          Text("≈ \(Fmt.qty(out))").mono(21, .semibold)
+          Text(toAsset.ticker).mono(14, .bold).foregroundStyle(Color.sodaxOrange)
         }
         if let cp = coinPrice, let sp = stockPrice {
-          let perCoin = cp / sp
-          Text("1 \(coin.ticker) ≈ \(Fmt.qty(perCoin)) \(stock.ticker)   ·   1 \(stock.ticker) ≈ \(Fmt.qty(1/perCoin)) \(coin.ticker)")
-            .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
-          Text("\(coin.ticker) \(Fmt.usd(cp))   ·   \(stock.ticker) \(Fmt.usd(sp))")
-            .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+          let per = cp / sp
+          Text("1 \(coin.ticker) = \(Fmt.qty(per)) \(stock.ticker)   1 \(stock.ticker) = \(Fmt.qty(1/per)) \(coin.ticker)")
+            .mono(9.5).foregroundStyle(Color.nierFaint)
+          Text("\(coin.ticker) \(Fmt.usd(cp))   \(stock.ticker) \(Fmt.usd(sp))")
+            .mono(9.5).foregroundStyle(Color.nierFaint)
         }
       } else {
-        Text(store.errorText ?? "Loading prices…")
-          .font(.system(size: 12)).foregroundStyle(.secondary)
+        Text(store.errorText ?? "LOADING FEED…").mono(11).foregroundStyle(Color.nierFaint)
       }
     }
   }
+
+  // MARK: glance
 
   private var glance: some View {
-    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-      ForEach(STOCKS.prefix(4)) { s in
-        HStack {
-          Text(s.ticker).font(.system(size: 11, design: .monospaced).weight(.bold))
-          Spacer()
-          Text(store.price(s.symbol).map(Fmt.usd) ?? "—")
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 6) {
+      label("XSTOCKS")
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
+        ForEach(STOCKS.prefix(4)) { s in
+          HStack(spacing: 6) {
+            Text("■").font(.system(size: 7)).foregroundStyle(Color.sodaxOrange)
+            Text(s.ticker).mono(11, .bold)
+            Spacer()
+            Text(store.price(s.symbol).map(Fmt.usd) ?? "··").mono(11).foregroundStyle(Color.nierFaint)
+          }
+          .padding(.horizontal, 8).padding(.vertical, 5)
+          .nierBox(.nierBone)
         }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 7))
       }
     }
   }
 
+  // MARK: footer
+
   private var footer: some View {
-    HStack {
-      Text("Updated \(Fmt.relative(store.lastUpdated))")
-        .font(.system(size: 10)).foregroundStyle(.tertiary)
+    HStack(spacing: 0) {
+      Text("UPDATED \(Fmt.relative(store.lastUpdated).uppercased())")
+        .mono(9).foregroundStyle(Color.nierFaint)
       Spacer()
-      Button("Refresh") { Task { await store.refresh() } }
-        .buttonStyle(.borderless).font(.system(size: 11))
-      Button("Open swapper ↗") { NSWorkspace.shared.open(SWAPPER_URL) }
-        .buttonStyle(.borderless).font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(Color.sodaxOrange)
-      Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
-        .buttonStyle(.borderless).help("Quit")
+      footBtn("REFRESH") { Task { await store.refresh() } }
+      footBtn("SWAPPER ↗") { NSWorkspace.shared.open(SWAPPER_URL) }
+      Button { NSApp.terminate(nil) } label: {
+        Image(systemName: "power").font(.system(size: 11))
+      }.buttonStyle(.plain).help("Quit")
     }
+  }
+
+  private var poweredBy: some View {
+    HStack(spacing: 4) {
+      Spacer()
+      Text("POWERED BY").mono(8).foregroundStyle(Color.nierFaint).tracking(1)
+      Text("SODAX").mono(8, .heavy).foregroundStyle(Color.sodaxOrange).tracking(1)
+      Spacer()
+    }
+  }
+
+  // MARK: bits
+
+  private func label(_ t: String) -> some View {
+    HStack(spacing: 6) {
+      Text("■").font(.system(size: 7)).foregroundStyle(Color.sodaxOrange)
+      Text(t).mono(9.5, .semibold).tracking(1.2).foregroundStyle(Color.nierFaint)
+    }
+  }
+
+  private func picker(selection: Binding<String>, options: [Asset]) -> some View {
+    Picker("", selection: selection) {
+      ForEach(options) { a in Text(a.ticker).tag(a.symbol) }
+    }
+    .labelsHidden()
+    .pickerStyle(.menu)
+    .frame(maxWidth: .infinity)
+    .tint(Color.nierInk)
+  }
+
+  private func footBtn(_ t: String, _ action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(t).mono(10, .semibold).foregroundStyle(Color.sodaxOrange)
+    }
+    .buttonStyle(.plain)
+    .padding(.leading, 12)
   }
 }

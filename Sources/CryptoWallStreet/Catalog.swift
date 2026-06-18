@@ -1,10 +1,13 @@
 import SwiftUI
 
-/// SODAX brand palette (official). "Orange Sonic" is the accent.
+/// NieR:Automata terminal palette + SODAX "Orange Sonic" accent.
 extension Color {
-  static let sodaxOrange = Color(red: 1.0, green: 0.565, blue: 0.282)   // #FF9048 Orange Sonic
-  static let sodaxBg     = Color(red: 0.10, green: 0.075, blue: 0.072)  // espresso-tinted near-black
-  static let sodaxInk    = Color(red: 0.92, green: 0.89, blue: 0.87)    // cream-white
+  static let nierBone  = Color(red: 0.784, green: 0.761, blue: 0.659)  // #c8c2a8 field
+  static let nierPanel = Color(red: 0.741, green: 0.718, blue: 0.612)  // #bdb79c recessed
+  static let nierInk   = Color(red: 0.271, green: 0.255, blue: 0.220)  // #454138 ink
+  static let nierFaint = Color(red: 0.514, green: 0.486, blue: 0.392)  // #837c64
+  static let nierLine  = Color(red: 0.271, green: 0.255, blue: 0.220).opacity(0.38)
+  static let sodaxOrange = Color(red: 1.0, green: 0.565, blue: 0.282)  // #FF9048 Orange Sonic
 }
 
 /// The full swapper this widget complements. Change to your deployed URL.
