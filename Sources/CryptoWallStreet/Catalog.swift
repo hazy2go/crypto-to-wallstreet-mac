@@ -10,8 +10,8 @@ extension Color {
   static let sodaxOrange = Color(red: 1.0, green: 0.565, blue: 0.282)  // #FF9048 Orange Sonic
 }
 
-/// The full swapper this widget complements. Change to your deployed URL.
-let SWAPPER_URL = URL(string: "http://localhost:3210")!
+/// The full swapper this widget complements.
+let SWAPPER_URL = URL(string: "https://crypto-to-wallstreet.vercel.app")!
 
 /// Public SODAX solver oracle — same prices that drive the swap engine. No key.
 let ORACLE_URL = URL(string: "https://api.sodax.com/v1/intent/oracle")!
